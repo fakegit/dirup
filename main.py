@@ -69,6 +69,7 @@ def upload_resumable(filename, parent):
         status, response = request.next_chunk()
         if status:
             print("Uploaded {:02.0f}%".format(status.progress()*100.0))
+    return response
 
 def upload_multipart(filename, parent):
     
@@ -77,6 +78,7 @@ def upload_multipart(filename, parent):
         "name": filename.split("/")[-1],    
         "parents": [parent]
     }).execute()
+    return request
 
 files = [i for i in pathlib.Path(args.path).glob("**/*") if not i.is_dir()]
 dirs_processed = []
@@ -112,8 +114,11 @@ for i in dirs_processed:
                 remote_md5 = drive.files().get(fileId=p["id"], fields="md5Checksum", supportsAllDrives=True).execute()["md5Checksum"]
                 if local_md5 != remote_md5:
                     drive.files().delete(fileId=p["id"], supportsAllDrives=True).execute()
-                    tmp.append(o)
+                else:
+                    isdupe = True
                 break
+        if not isdupe:
+            tmp.append(o)
     deduped.append([i[0], i[1], tmp])
     pbar.next()
 pbar.finish()
@@ -122,12 +127,20 @@ for i in deduped:
     for o in i[2]:
         print("uploading " + o)
         fsize = os.stat(o).st_size
-        if fsize == 0: # if file empty, just create it
-            drive.files().create(body={
-                "name": o.split[-1],
-                "parents": [i[1]]
-            }, supportsAllDrives=True).execute()
-        elif fsize <= 5120: # if file 5MB or lower use multipart upoad
-            upload_multipart(o, i[1])
-        else: # if files size above 5MB user resumable
-            upload_resumable(o, i[1])
+        local_md5 = md5sum(o)
+        while True: # keep retrying until it uploads correctly
+            if fsize == 0: # if file empty, just create it
+                resp = drive.files().create(body={
+                    "name": o.split[-1],
+                    "parents": [i[1]]
+                }, supportsAllDrives=True).execute()
+                break
+            elif fsize <= 5120: # if file 5MB or lower use multipart upoad
+                resp = upload_multipart(o, i[1])
+            else: # if files size above 5MB user resumable
+                resp = upload_resumable(o, i[1])
+            remote_md5 = drive.files().get(fileId=resp["id"], fields="md5Checksum", supportsAllDrives=True).execute()["md5Checksum"]
+            if remote_md5 != local_md5: # if upload has wrong md5
+                drive.files().delete(fileId=resp["id"], supportsAllDrives=True).execute()
+            else:
+                break
