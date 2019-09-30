@@ -1,6 +1,6 @@
 from google.oauth2.service_account import Credentials
 from googleapiclient.http import MediaFileUpload
-import googleapiclient.discovery, argparse, pathlib, progress.bar, os
+import googleapiclient.discovery, argparse, pathlib, progress.bar, os, hashlib
 
 parser = argparse.ArgumentParser(description="tool to mass upload google drive files")
 parser.add_argument("path", help="path to files")
@@ -50,6 +50,13 @@ def drive_path(path, parent):
     else:
         return drive_path(path[1:], resp["id"])
 
+def md5sum(filename):
+    md5 = hashlib.md5()
+    with open(filename, 'rb') as f:
+        for chunk in iter(lambda: f.read(128 * md5.block_size), b''):
+            md5.update(chunk)
+    return md5.hexdigest()
+
 def upload_resumable(filename, parent):
     
     media = MediaFileUpload(filename, resumable=True)
@@ -95,8 +102,19 @@ pbar = progress.bar.Bar("checking for dupes", max=len(dirs_processed))
 deduped = []
 for i in dirs_processed:
     dir_contents = lsf(i[1])
-    dir_contents_paths = [i[0] + "/" + o["name"] for o in dir_contents]
-    deduped.append([i[0], i[1], [x for x in i[2] if x not in dir_contents_paths]])
+    tmp = []
+    for o in i[2]:
+        file_name = o.split("/")[-1]
+        isdupe = False
+        for p in dir_contents:
+            if file_name == p["name"]:
+                local_md5 = md5sum(o)
+                remote_md5 = drive.files().get(fileId=p["id"], fields="md5Checksum", supportsAllDrives=True).execute()["md5Checksum"]
+                if local_md5 != remote_md5:
+                    drive.files().delete(fileId=p["id"], supportsAllDrives=True).execute()
+                    tmp.append(o)
+                break
+    deduped.append([i[0], i[1], tmp])
     pbar.next()
 pbar.finish()
 
