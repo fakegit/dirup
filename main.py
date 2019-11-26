@@ -1,16 +1,35 @@
-from google.oauth2.service_account import Credentials
+from google.oauth2.service_account import Credentials as SACredentials
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.http import MediaFileUpload
-import googleapiclient.discovery, argparse, pathlib, progress.bar, os, hashlib
+import googleapiclient.discovery, argparse, pathlib, progress.bar, os, hashlib, pickle
 
 parser = argparse.ArgumentParser(description="tool to mass upload google drive files")
 parser.add_argument("path", help="path to files")
 parser.add_argument("dest", help="fileid destination to upload to")
 parser.add_argument("--key", "-k", help="path to key file", required=False, default="key.json")
+parser.add_argument("-h", help="use a human account", required=False, action="store_true")
 args = parser.parse_args()
 
-creds = Credentials.from_service_account_file(args.key, scopes=[
-    "https://www.googleapis.com/auth/drive"
-])
+if not args.h:
+    creds = SACredentials.from_service_account_file(args.key, scopes=[
+        "https://www.googleapis.com/auth/drive"
+    ])
+else:
+    SCOPES = ["https://www.googleapis.com/auth/drive"]
+    creds = None
+    if os.path.exists('token.pickle'):
+        with open('token.pickle', 'rb') as token:
+            creds = pickle.load(token)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                args.key, SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open('token.pickle', 'wb') as token:
+            pickle.dump(creds, token)
 
 drive = googleapiclient.discovery.build("drive", "v3", credentials=creds)
 
