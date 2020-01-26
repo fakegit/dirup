@@ -8,7 +8,7 @@ parser = argparse.ArgumentParser(description="tool to mass upload google drive f
 parser.add_argument("path", help="path to files")
 parser.add_argument("dest", help="fileid destination to upload to")
 parser.add_argument("--key", "-k", help="path to key file", required=False, default="key.json")
-parser.add_argument("-h", help="use a human account", required=False, action="store_true")
+parser.add_argument("-u", help="use a human account", required=False, action="store_true")
 args = parser.parse_args()
 
 if not args.h:
