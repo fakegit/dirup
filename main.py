@@ -11,7 +11,7 @@ parser.add_argument("--key", "-k", help="path to key file", required=False, defa
 parser.add_argument("-u", help="use a human account", required=False, action="store_true")
 args = parser.parse_args()
 
-if not args.h:
+if not args.u:
     creds = SACredentials.from_service_account_file(args.key, scopes=[
         "https://www.googleapis.com/auth/drive"
     ])
